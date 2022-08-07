@@ -1,0 +1,62 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using Microsoft.AspNetCore.SignalR.Client
+@using System.Diagnostics
+@inject NavigationManager NavigationManager
+
+
+<PageTitle>Index</PageTitle>
+
+<h1>Hello, world!</h1>
+
+Click Send to test the hub.
+
+<span >@_num</span>
+<button @onclick="async () => await Send(5)" disabled="@(!_hubIsConnected)">Send</button>
+
+<SurveyPrompt Title="How is Blazor working for you?" />
+
+@code{
+    HubConnection? _hubConnection;
+   bool _hubIsConnected => _hubConnection?.State == HubConnectionState.Connected;
+   int _num = 0;
+
+   protected override async Task OnInitializedAsync()
+   {
+      try
+      {
+          _hubConnection = new HubConnectionBuilder().WithUrl(NavigationManager.ToAbsoluteUri("/countingHub"), options =>
+          {
+
+             options.HttpMessageHandlerFactory = innerHandler =>
+                 new IncludeRequestCredentialsMessageHandler { InnerHandler = innerHandler };
+          }).Build();
+
+          _hubConnection.On<int>("ReceiveMessage", async (update) =>
+      {
+         _num = +update;
+         StateHasChanged();
+         await Send(_num + 10);
+      });
+
+          await _hubConnection.StartAsync();
+      }
+      catch (AccessTokenNotAvailableException exception)
+      {
+         exception.Redirect();
+      }
+      catch (Exception ex)
+      {
+          Debugger.Break();
+      }
+   }
+
+   private async Task Send(int clientUpdate)
+   {
+      if (_hubConnection is not null)
+      {
+         await _hubConnection.SendAsync("SendMessage", clientUpdate);
+      }
+   }
+
+}
