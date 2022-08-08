@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @using System.Diagnostics
 @inject NavigationManager NavigationManager
+@inject IAccessTokenProvider AccessTokenProvider
 
 
 <PageTitle>Index</PageTitle>
@@ -17,37 +18,39 @@ Click Send to test the hub.
 <SurveyPrompt Title="How is Blazor working for you?" />
 
 @code{
-    HubConnection? _hubConnection;
+   HubConnection? _hubConnection;
    bool _hubIsConnected => _hubConnection?.State == HubConnectionState.Connected;
    int _num = 0;
 
    protected override async Task OnInitializedAsync()
    {
-      try
+      var tokenResult = await AccessTokenProvider.RequestAccessToken();
+      if (tokenResult.TryGetToken(out var token))
       {
-          _hubConnection = new HubConnectionBuilder().WithUrl(NavigationManager.ToAbsoluteUri("/countingHub"), options =>
-          {
+         try
+         {
+            _hubConnection = new HubConnectionBuilder().WithUrl(NavigationManager.ToAbsoluteUri("/countingHub"), options =>
+            {
+               options.AccessTokenProvider = () => Task.FromResult(token?.Value);
+            }).Build();
 
-             options.HttpMessageHandlerFactory = innerHandler =>
-                 new IncludeRequestCredentialsMessageHandler { InnerHandler = innerHandler };
-          }).Build();
+             _hubConnection.On<int>("ReceiveMessage", async (update) =>
+             {
+                _num = +update;
+                StateHasChanged();
+                await Send(_num + 10);
+             });
 
-          _hubConnection.On<int>("ReceiveMessage", async (update) =>
-      {
-         _num = +update;
-         StateHasChanged();
-         await Send(_num + 10);
-      });
-
-          await _hubConnection.StartAsync();
-      }
-      catch (AccessTokenNotAvailableException exception)
-      {
-         exception.Redirect();
-      }
-      catch (Exception ex)
-      {
-          Debugger.Break();
+             await _hubConnection.StartAsync();
+         }
+         catch (AccessTokenNotAvailableException exception)
+         {
+            exception.Redirect();
+         }
+         catch (Exception ex)
+         {
+             Debugger.Break();
+         }
       }
    }
 
